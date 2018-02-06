@@ -6,6 +6,9 @@ import random
 from collections import defaultdict
 import numpy as np
 
+#seed = 12345
+#random.seed(seed)
+
 if not len(sys.argv) > 2:
 	sys.exit("\nPlease provide the desired number of hours for which to run the experiment and the mode of reproduction for second and subsequent births (plus size of genome optionally).\n")
 ticks = int(sys.argv[1])+1
@@ -16,12 +19,16 @@ else:
 	genome_size = int(sys.argv[3])
 
 
+last_only = True
+
 #'sexual', 'apomixis', 'agd', 'atf', 'acf', 'arf'
 #mode='agd' 
 
 
-def create_automictic_gt(A,prob_hom):
+def create_automictic_gt(A,prob_hom):#, seed=seed):
 	
+#	random.seed(seed)
+
 	if random.randint(0,100) < prob_hom:
 		if random.randint(0,100) < 50:
                 	offspring = A[0]+A[0]
@@ -33,7 +40,9 @@ def create_automictic_gt(A,prob_hom):
 	return offspring
 
 
-def reproduce(mode, parentA, parentB=[], hom_prob=[]):
+def reproduce(mode, parentA, parentB=[], hom_prob=[]):#, seed=seed):
+
+#	random.seed(seed)
 
 	offspring = []
 	if mode == 'sexual':
@@ -109,7 +118,9 @@ def generate_genome(n):
 
 	return genome
 
-def assign_homozygous_transition_prob(genotypes, model):
+def assign_homozygous_transition_prob(genotypes, model):#, seed=seed):
+
+#	random.seed(seed)
 
 	#genotypes is a list of genotypes
 	probabilities = []
@@ -135,6 +146,7 @@ def assign_homozygous_transition_prob(genotypes, model):
 
 #genome = generate_genome(genome_size)
 
+#probs = assign_homozygous_transition_prob(genotypes=genome, model=mode)
 #offspring = reproduce(mode=mode, parentA=genome, hom_prob=probs, parentB=genome)
 
 #for i in range(len(genome)):
@@ -143,8 +155,11 @@ def assign_homozygous_transition_prob(genotypes, model):
 #freqs = count_gts(offspring)
 #print "\taa: %s\tab: %s\tbb: %s" %(freqs['aa'], freqs['ab'], freqs['bb'])
 
-def make_prob(maxi, mu=0, sigma=5):
+def make_prob(maxi, mu=0, sigma=5):#, seed=seed):
+
 	import numpy as np
+
+#	random.seed(seed)
 	
 	s = np.random.normal(mu, sigma, 100000)
 	count = defaultdict(int)
@@ -205,8 +220,13 @@ population = {founder: {'mother':'origin', 'births': int(0), 'sex': 'female', 'b
 individuals = []
 sex_distribution = defaultdict(int)
 alleles = []
+av_heterozygosity = []
+all_homo = False
 for i in range(len(population[founder]['genome'])):
 	alleles.append('')
+	av_heterozygosity.append('')	
+
+birth_counts = {1:0, 2:0, 3:0, 4:0}
 
 for i in range(1,ticks):
 
@@ -220,6 +240,8 @@ for i in range(1,ticks):
 
 	for j in range(len(genome)):
 		alleles[j] = ''
+		av_heterozygosity[j] = float(0)
+
 	ages = []
 	born=0
 	died=0
@@ -229,7 +251,7 @@ for i in range(1,ticks):
 	for ind in individuals:
 		age = i-population[ind]['born']
 		if population[ind]['births'] == 0:
-			if random.randrange(100) < first_birth_prob[age]:
+			if random.randint(0,100) < first_birth_prob[age]:
 				daughter = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
 #				print "# DAY: %.1f - %s (age: %s) gives birth (%s) to %s" %((float(i)/24), ind,age,population[ind]['births']+1, daughter)
 				population[ind]['births'] += 1
@@ -238,14 +260,19 @@ for i in range(1,ticks):
 				population[daughter] = {'mother':ind, 'births': int(0), 'sex':'female', 'born':i, 'gave_birth':0, 'genome':reproduce(mode='apomixis', parentA=population[ind]['genome'], hom_prob=apomixis_probs)}
 				sex_distribution[population[daughter]['sex']] += 1
 				ages.append(0)
+				birth_counts[population[ind]['births']] += 1
 
 #				print "Add new genome - first born"
 				for j in range(len(genome)):
 					alleles[j] += population[daughter]['genome'][j]
+					if population[daughter]['genome'][j] == 'ab':
+						av_heterozygosity[j] += 1
 #				print ind,population[ind]
+
+				
 		
 		else:
-			if (random.randrange(100) < sec_and_sub_prob[i-population[ind]['gave_birth']]):
+			if (random.randint(0,100) < sec_and_sub_prob[i-population[ind]['gave_birth']]):
 				daughter = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
 #				print "# DAY: %.1f - %s (age: %s) gives birth (%s) to %s" %((float(i)/24), ind,age,population[ind]['births']+1, daughter)
 	                        population[ind]['births'] += 1
@@ -259,9 +286,14 @@ for i in range(1,ticks):
 #					population[ind]['sex'] = 'sex'
 				sex_distribution[population[daughter]['sex']] += 1
 				ages.append(0)
+				birth_counts[population[ind]['births']] += 1
+
+
 #				print "Add new genome - second born"
 				for j in range(len(genome)):
 					alleles[j] += population[daughter]['genome'][j]
+					if population[daughter]['genome'][j] == 'ab':
+						av_heterozygosity[j] += 1
 #				print ind,population[ind]
 
 
@@ -284,6 +316,8 @@ for i in range(1,ticks):
 #		print "Add genome"
 		for j in range(len(genome)):
 			alleles[j] += population[ind]['genome'][j]
+			if population[ind]['genome'][j] == 'ab':
+				av_heterozygosity[j] += 1
 
 	if len(population) == 0:
 		print "###POPULATION GOT EXTINCT AFTER %.1f DAYS ###\n" %(float(i)/24)
@@ -291,6 +325,7 @@ for i in range(1,ticks):
 	else:
 		frequencies = []
 		percent_homozygous = float(0)
+		
 		for j in range(len(genome)):
 			counts = defaultdict(int)
 			counts['a'] = 0
@@ -309,16 +344,54 @@ for i in range(1,ticks):
 			if counts['a'] == 0 or counts['b'] == 0:
 				percent_homozygous += 1 
 
+			av_heterozygosity[j] = av_heterozygosity[j]/len(population)*100
+
 		percent_homozygous = percent_homozygous/len(genome)*100		
 
 #		print "###POPULATION SIZE AFTER %.1f DAYS ( %s hours): %s\t\tborn: %s\t\tdied: %s\t\tmales: %.2f %% \t\tfemales: %.2f %%\t\tavg.age: %.0f" %((float(i)/24), i, len(population), born, died, float(sex_distribution['male'])/len(population)*100, float(sex_distribution['female'])/len(population)*100, np.mean(ages)) 
-		print "###Days: %.1f\thours: %s hours\tpopulation size: %s\tborn: %s\tdied: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %((float(i)/24), i, len(population), born, died, float(sex_distribution['male'])/len(population)*100, float(sex_distribution['female'])/len(population)*100, np.mean(ages), pressure), 
-		
-#		print "percent homozygous: %.2f\t%s" %(percent_homozygous, frequencies)
-		print "percent homozygous: %.2f" %(percent_homozygous)
 
+		if not len(population) == 0:
+			male_perc = float(sex_distribution['male'])/len(population)*100
+			fema_perc = float(sex_distribution['female'])/len(population)*100
+		else:
+			male_perc = float(0)
+			fema_perc = float(0)
+
+		if np.mean(av_heterozygosity) > 0:
+			last_heterozygous = i
+
+
+		if not last_only:
+			print "###Days: %.1f\thours: %s hours\tpopulation size: %s\tborn: %s\tdied: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %((float(i)/24), i, len(population), born, died, male_perc, fema_perc, np.mean(ages), pressure), 
+			print "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tlast heterozygous: %s\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), last_heterozygous, birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+		
+#			print "percent homozygous: %.2f\t%s" %(percent_homozygous, frequencies)
+#			print "percent fixed: %.2f" %(percent_homozygous)
+#			print av_heterozygosity
+#			print np.mean(av_heterozygosity)
+		else:
+			if np.mean(av_heterozygosity) == 0:
+				if not all_homo:
+					print "###Days: %.1f\thours: %s hours\tpopulation size: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %((float(i)/24), i, len(population), male_perc, fema_perc, np.mean(ages), pressure),
+	                        	print "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tlast heterozygous: %s\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), last_heterozygous, birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+					all_homo = True
+			
+
+if last_only:
+	print "###Days: %.1f\thours: %s hours\tpopulation size: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %((float(i)/24), i, len(population), male_perc, fema_perc, np.mean(ages), pressure), 
+		
+#	print "percent homozygous: %.2f\t%s" %(percent_homozygous, frequencies)
+	print "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tlast heterozygous: %s\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), last_heterozygous, birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
 
 #print "\n###POPULATION SIZE AFTER %.1f DAYS: %s" %((float(i)/24), len(population))
+
+
+
+
+
+
+
+
 
 import base64
 def encode(key, clear):

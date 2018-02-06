@@ -1,3 +1,17 @@
+##Run a bunch (100) of simulations for each mode
 for mode in $(echo -e "agd\natf\nsexual\nacf\narf"); do for i in {000001..000100}; do echo -e "$mode\t$i" >&2; out=$(./gyrosim.py 1920 $mode 1000 | tail -n 1); echo -e "$i\t$out"; done > $mode.1000.1920.tsv; done
 
+
+
+### DO it with parallel
+#prepare variable with instructions for 100 runs in each mode
+instructions=$(echo -e "agd\natf\nsexual\nacf\narf" | sed 's/^/1920 /' | sed 's/$/ 1000/' | perl -ne 'chomp; print "$_ "x100')
+
+
+## the instructino string will go something like '1920 agd 1000 1920 arf 1000'
+## we instruct GNU parallel to run 6 jobs in parallel and 
+## use 3 elements from the string for the command
+## so the first parallel job will go './gyrosim.py 1920 agd 1000'
+## the second parallel job will go './gyrosim.py 1920 arf 1000' and so on
+parallel --tagstring {2} --jobs 6 -N3 ./gyrosim.py {1} {2} {3} ::: $instructions > simulations.txt
 
