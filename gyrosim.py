@@ -9,17 +9,29 @@ import numpy as np
 #seed = 12345
 #random.seed(seed)
 
+fish = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
+
+start_pressure = 2 # each tick each individual is challenged with a probability of 0.05. if challenged the individul dies with probability of 0.05
+pressure = start_pressure
+
+#For density dependent regime
+density_dependence_interval = 10 # in hours at which population size will be checked and compared against the specified
+density = 50 # desired population size
+
+time_dependence_interval = 96
+incremental_pressure_increase = 1
+
+last_only = False
+genome_size = 100
+
 if not len(sys.argv) > 2:
 	sys.exit("\nPlease provide the desired number of hours for which to run the experiment and the mode of reproduction for second and subsequent births (plus size of genome optionally).\n")
 ticks = int(sys.argv[1])+1
 mode = str(sys.argv[2])
-if not len(sys.argv) == 4:
-	genome_size = 100
-else:
+if len(sys.argv) == 4:
 	genome_size = int(sys.argv[3])
 
 
-last_only = True
 
 #'sexual', 'apomixis', 'agd', 'atf', 'acf', 'arf'
 #mode='agd' 
@@ -179,18 +191,20 @@ def make_prob(maxi, mu=0, sigma=5):#, seed=seed):
 
 def add_minimum(minimum, dictionary):
 
-	for i in range(sorted(dictionary)[-1]+1):
-		if not i in dictionary:
-			dictionary[i] = minimum
+	outdict = dictionary.copy()
+	for i in range(sorted(outdict)[-1]+1):
+		if not i in outdict:
+			outdict[i] = minimum
 		else:
-			if dictionary[i] < minimum:
-				dictionary[i] = minimum
+			if outdict[i] < minimum:
+				outdict[i] = minimum
 
-	return dictionary
+	return outdict
 
 first_birth_prob=make_prob(maxi=50)
 sec_and_sub_prob=make_prob(maxi=100)
-death_prob=make_prob(maxi=340, sigma=10)
+initial_death_prob=make_prob(maxi=340, sigma=10)
+
 #print "Death probability FIRST:"
 #for hour in sorted(death_prob):
 #	print hour,death_prob[hour]
@@ -198,10 +212,9 @@ death_prob=make_prob(maxi=340, sigma=10)
 first_birth_prob = add_minimum(minimum=0, dictionary=first_birth_prob)
 sec_and_sub_prob = add_minimum(minimum=0, dictionary=sec_and_sub_prob)
 
-pressure_regime = {1:1, 240:5, 400:11}
+death_prob = add_minimum(minimum=pressure, dictionary=initial_death_prob)
 
-#pressure = 1 # each tick each individual is challenged with a probability of 0.05. if challenged the individul dies with probability of 0.05
-death_prob = add_minimum(minimum=0, dictionary=death_prob)
+pressure_regime = {}#{1:1, 240:5, 400:11}
 #increase_interval = 10000 #240
 #up = 1 #increase the pressure by that many percent
 
@@ -222,20 +235,65 @@ sex_distribution = defaultdict(int)
 alleles = []
 av_heterozygosity = []
 all_homo = False
+final_out = ''
 for i in range(len(population[founder]['genome'])):
 	alleles.append('')
 	av_heterozygosity.append('')	
 
 birth_counts = {1:0, 2:0, 3:0, 4:0}
 
+prev_sizes = []
+
 for i in range(1,ticks):
 
-	if i in pressure_regime:
+	#at regular intervals
+	ok = True
+	if i % density_dependence_interval == 0:
+		if density > 0:
+			std = np.std(prev_sizes,keepdims=True)[0]
+			mean = np.mean(prev_sizes)
+#			print prev_sizes,np.mean(prev_sizes),std,int(std)
+			prev_sizes = []
+			if len(population) > mean:
+				if len(population) >= density*0.9:
+					if len(population) < density:
+						print "slight adjust - increase (above) pressure by %i" %int(round(std,0)/2)
+						pressure += int(round(std,0)/2)
+					elif len(population) >= density:
+						print "adjust - increase (above) pressure by %i" %int(round(std,0))
+						pressure += int(round(std,0))
+					ok = False
+			elif len(population) < mean:
+				if len(population) <= density*1.1:
+					if len(population) > density:
+						print "slight adjust - decrease (below) pressure by %i" %int(round(std,0)/2)
+						pressure -= int(round(std,0)/2)
+					elif len(population) <= density:
+						print "adjust - decrease (below) pressure by %i" %int(round(std,0))
+						pressure -= int(round(std,0))
+					ok = False
+	prev_sizes.append(len(population))
+
+	if i % time_dependence_interval == 0:
+		print "time dependent increase by %i" %incremental_pressure_increase
+		start_pressure += incremental_pressure_increase
+		if start_pressure > pressure:
+			pressure = start_pressure
+		ok = False
+
+	if not ok:
+		if pressure < start_pressure:
+			pressure = start_pressure
+#			print "new pressure: %s" %pressure
+		death_prob = add_minimum(minimum=pressure, dictionary=initial_death_prob)
+
+
+	if pressure_regime and i in pressure_regime:
 #	if i % increase_interval == 0:
 #		pressure += up
 #		print "# DAY: %.1f - INCREASING THE PRESSURE TO: %s" %((float(i)/24), pressure)
 		pressure = pressure_regime[i]
-		death_prob = add_minimum(minimum=pressure_regime[i], dictionary=death_prob)
+		death_prob = add_minimum(minimum=pressure_regime[i], dictionary=initial_death_prob)
 
 
 	for j in range(len(genome)):
@@ -320,7 +378,10 @@ for i in range(1,ticks):
 				av_heterozygosity[j] += 1
 
 	if len(population) == 0:
-		print "###POPULATION GOT EXTINCT AFTER %.1f DAYS ###\n" %(float(i)/24)
+		print "[ %s - POP. EXTINCTION ]\tdays: %.1f" %(fish, float(i)/24)
+		ages.append(0)
+		fema_perc = float(0)
+		male_perc = float(0)
 		break
 	else:
 		frequencies = []
@@ -357,13 +418,9 @@ for i in range(1,ticks):
 			male_perc = float(0)
 			fema_perc = float(0)
 
-		if np.mean(av_heterozygosity) > 0:
-			last_heterozygous = i
-
-
 		if not last_only:
-			print "###Days: %.1f\thours: %s hours\tpopulation size: %s\tborn: %s\tdied: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %((float(i)/24), i, len(population), born, died, male_perc, fema_perc, np.mean(ages), pressure), 
-			print "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tlast heterozygous: %s\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), last_heterozygous, birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+			print "[ %s - VERBOSE OUTPUT ]\tdays: %.1f\thours: %s hours\tpopulation size: %s\tborn: %s\tdied: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %(fish, (float(i)/24), i, len(population), born, died, male_perc, fema_perc, np.mean(ages), pressure), 
+			print "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
 		
 #			print "percent homozygous: %.2f\t%s" %(percent_homozygous, frequencies)
 #			print "percent fixed: %.2f" %(percent_homozygous)
@@ -372,16 +429,18 @@ for i in range(1,ticks):
 		else:
 			if np.mean(av_heterozygosity) == 0:
 				if not all_homo:
-					print "###Days: %.1f\thours: %s hours\tpopulation size: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %((float(i)/24), i, len(population), male_perc, fema_perc, np.mean(ages), pressure),
-	                        	print "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tlast heterozygous: %s\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), last_heterozygous, birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+					final_out = "[ %s - ALL HOMOZYGOUS ]\tdays: %.1f\thours: %s hours\tpopulation size: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %(fish, (float(i)/24), i, len(population), male_perc, fema_perc, np.mean(ages), pressure)
+	                        	final_out += "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
 					all_homo = True
 			
 
 if last_only:
-	print "###Days: %.1f\thours: %s hours\tpopulation size: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %((float(i)/24), i, len(population), male_perc, fema_perc, np.mean(ages), pressure), 
+	if final_out:
+		print final_out
+	print "[ %s - SIMULATION DONE ]\tdays: %.1f\thours: %s \tpopulation size: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f h\tpressure: %s\t" %(fish, (float(i)/24), i, len(population), male_perc, fema_perc, np.mean(ages), pressure), 
 		
 #	print "percent homozygous: %.2f\t%s" %(percent_homozygous, frequencies)
-	print "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tlast heterozygous: %s\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), last_heterozygous, birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+	print "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
 
 #print "\n###POPULATION SIZE AFTER %.1f DAYS: %s" %((float(i)/24), len(population))
 
