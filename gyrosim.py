@@ -23,7 +23,7 @@ time_dependence_interval = 0 #96
 incremental_pressure_increase = 0 #1
 
 verbose = False
-genome_size = 100
+genome_size = 1000
 
 write_out = True
 report_interval = 1
@@ -35,18 +35,21 @@ if not len(sys.argv) > 2:
 	sys.exit("\nPlease provide the desired number of hours for which to run the experiment and the mode of reproduction for second and subsequent births (plus size of genome optionally).\n")
 ticks = int(sys.argv[1])+1
 mode = str(sys.argv[2])
-if len(sys.argv) == 4:
-	genome_size = int(sys.argv[3])
-if len(sys.argv) == 5:
+if len(sys.argv) >= 4:
 	sexual = True
+if len(sys.argv) == 5:
+	genome_size = int(sys.argv[4])
+
+
 output = []
+outfreqs = []
 
 outstring = "[ %s - PARAMETER SETTINGS ]\tgenome size: %s\tparthenogenesis mode: %s\tsexual: %s\tstart pressure: %s\tregulate density: %s\tdensity check inteval: %s\ttime dependence: %s\tpressure increment per time: %s" %(fish, genome_size, mode, sexual, start_pressure, density, density_dependence_interval, time_dependence_interval, incremental_pressure_increase)
 
 print outstring
 if write_out:
 	output.append(outstring+'\n')
-
+	outfreqs.append(outstring+'\n')
 #######
 pressure = start_pressure
 
@@ -513,13 +516,14 @@ for i in range(1,ticks):
 			male_perc = float(0)
 			fema_perc = float(0)
 
-		if verbose:
-			if i % report_interval == 0:
-				outstring = "[ %s - VERBOSE OUTPUT ]\tdays: %.1f\thours: %s\tpopulation size: %s\tborn: %s\tdied: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %(fish, (float(i)/24), i, len(population), born, died, male_perc, fema_perc, np.mean(ages), pressure) 
-				outstring += "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+		if i % report_interval == 0:
+			outstring = "[ %s - VERBOSE OUTPUT ]\tdays: %.1f\thours: %s\tpopulation size: %s\tborn: %s\tdied: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %(fish, (float(i)/24), i, len(population), born, died, male_perc, fema_perc, np.mean(ages), pressure) 
+			outstring += "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+			if verbose:
 				print outstring
-				if write_out:
-	        			output.append(outstring+'\n')
+			if write_out:
+	        		output.append(outstring+'\n')
+				outfreqs.append("[ %s ]\tdays: %.1f\thours: %s\tpopulation size: %s\tN loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\t%s\n" %(fish, (float(i)/24), i, len(population),len(genome),percent_homozygous, np.mean(av_heterozygosity),frequencies))
 #			print "percent homozygous: %.2f\t%s" %(percent_homozygous, frequencies)
 #			print "percent fixed: %.2f" %(percent_homozygous)
 #			print av_heterozygosity
@@ -550,8 +554,9 @@ if write_out:
 	for l in output:
 		OUT.write(l)
 
-
-
+	OUTFREQ = open(out_location+fish+'.allele_freqs.'+mode+'.sexual-'+str(sexual)+'.tsv','w')
+	for l in outfreqs:
+		OUTFREQ.write(l)
 
 
 

@@ -5,13 +5,19 @@ for mode in $(echo -e "agd\natf\nsexual\nacf\narf"); do for i in {000001..000100
 
 ### DO it with parallel
 #prepare variable with instructions for 100 runs in each mode
-instructions=$(echo -e "agd\natf\nsexual\nacf\narf" | sed 's/^/1920 /' | sed 's/$/ 1000/' | perl -ne 'chomp; print "$_ "x100')
+instructions=$(echo -e "apomixis\nsexual\nagd\natf\nacf\narf" | sed 's/^/1920 /' | perl -ne 'chomp; print "$_ "x100')
+instructions_sexual=$(echo -e "apomixis\nsexual\nagd\natf\nacf\narf" | sed 's/^/1920 /' | perl -ne 'chomp; print "$_ sexual "x100')
 
+echo $instructions
+echo $instructions_sexual
 
-## the instructino string will go something like '1920 agd 1000 1920 arf 1000'
+## the instructino string will go something like '1920 agd sexual 1920 arf sexual'
 ## we instruct GNU parallel to run 6 jobs in parallel and 
-## use 3 elements from the string for the command
-## so the first parallel job will go './gyrosim.py 1920 agd 1000'
-## the second parallel job will go './gyrosim.py 1920 arf 1000' and so on
-parallel --tagstring {2} --jobs 6 -N3 ./gyrosim.py {1} {2} {3} ::: $instructions > simulations.txt
+## use 2 or 3 elements from the string for the command
+## so the first parallel job will go './gyrosim.py 1920 agd'
+## the second parallel job will go './gyrosim.py 1920 arf' and so on
+parallel --tagstring {2} --jobs 6 -N2 ./gyrosim.py {1} {2} ::: $instructions > outputs/simulations.sexual-False.log
+## so the first parallel job will go './gyrosim.py 1920 agd sexual'
+## the second parallel job will go './gyrosim.py 1920 arf sexual' and so on
+parallel --tagstring {2} --jobs 6 -N3 ./gyrosim.py {1} {2} {3} ::: $instructions_sexual > outputs/simulations.sexual-True.log
 
