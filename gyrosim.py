@@ -6,23 +6,28 @@ import random
 from collections import defaultdict
 import numpy as np
 
+
+### INPUTS
 #seed = 12345
 #random.seed(seed)
 
-fish = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
-
+allow_sex = True
 start_pressure = 2 # each tick each individual is challenged with a probability of 0.05. if challenged the individul dies with probability of 0.05
-pressure = start_pressure
 
 #For density dependent regime
 density_dependence_interval = 10 # in hours at which population size will be checked and compared against the specified
-density = 50 # desired population size
+density = 100 # desired population size
 
-time_dependence_interval = 96
+#For time dependent regime
+time_dependence_interval = 0 #96
 incremental_pressure_increase = 1
 
 last_only = False
 genome_size = 100
+
+#######
+fish = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
+pressure = start_pressure
 
 if not len(sys.argv) > 2:
 	sys.exit("\nPlease provide the desired number of hours for which to run the experiment and the mode of reproduction for second and subsequent births (plus size of genome optionally).\n")
@@ -273,13 +278,14 @@ for i in range(1,ticks):
 						pressure -= int(round(std,0))
 					ok = False
 	prev_sizes.append(len(population))
-
-	if i % time_dependence_interval == 0:
-		print "time dependent increase by %i" %incremental_pressure_increase
-		start_pressure += incremental_pressure_increase
-		if start_pressure > pressure:
-			pressure = start_pressure
-		ok = False
+	
+	if time_dependence_interval:
+		if i % time_dependence_interval == 0:
+			print "time dependent increase by %i" %incremental_pressure_increase
+			start_pressure += incremental_pressure_increase
+			if start_pressure > pressure:
+				pressure = start_pressure
+			ok = False
 
 	if not ok:
 		if pressure < start_pressure:
@@ -306,6 +312,68 @@ for i in range(1,ticks):
 	sex_distribution['female'] = 0
 	sex_distribution['male'] = 0
 	individuals = population.keys()
+
+
+	### THIS IS THE NEW PART
+
+#	print "### NEW PART"
+
+	if allow_sex:
+		by_stage = {'0':[], '>=1':[], '>=2':[]}
+	
+		for ind in individuals:
+			if population[ind]['births'] > 1:
+#				print "%s is potentially sexual" %ind
+				by_stage['>=1'].append(ind)
+				if population[ind]['births'] >= 2:
+					by_stage['>=2'].append(ind)
+	
+		#now we'll deal with the potentially sexual worms
+#		print "Potentially sexual individuals %s of %s total population size" %(len(by_stage['>=2']), len(population))
+		if by_stage['>=2']:
+			total_population_size = len(population)
+			sexual_at_right_stage = []
+			#find the individuals that can inseminatepotentially sexual individuals at the right stage of development, -> age is 0-24 h after last birth
+			for ind in by_stage['>=2']:
+				if i-population[ind]['gave_birth'] <= 24 and not 'embryo_gt' in population[ind]:
+					sexual_at_right_stage.append(ind)
+	
+			#find proportion of sexual indiviuals at right stage in the total population
+			sexy_proportion = float(len(sexual_at_right_stage))/total_population_size*100
+#			print "Proportion of sexual individuals that are ready for being inseminated: %.2f (%s)" %(sexy_proportion, len(sexual_at_right_stage))
+	
+		#now let's decide if/which individuals have sex
+			#whether a worm encounters another worm has mainly to do with worm density - need to find a criterion linked to density somehow - for now let's do probability of encounter is population size / 10, so if 50 individuals then the prob. is 5 percent
+			encounter_prob = int(float(total_population_size)/10)
+			for ind in by_stage['>=2']:
+#				print "Does %s bump into something?" %ind
+				if random.randint(0,100) < encounter_prob:
+#					print "%s has encountert another worm" %ind
+					#is this worm another sexual worm? 
+					if random.randint(0,100) < int(sexy_proportion*100) and len(sexual_at_right_stage) > 0:
+						parentB_index = random.randrange(0,len(sexual_at_right_stage))
+						parentB = sexual_at_right_stage[parentB_index]
+#						print "It's a match with %s!" %parentB
+						gt = reproduce(mode='sexual', parentA=population[ind]['genome'], parentB=population[parentB]['genome'])
+						population[parentB]['embryo_gt'] = gt
+						del sexual_at_right_stage[parentB_index]
+	
+						if ind in sexual_at_right_stage:
+#							print "reciprocal insemination"
+							index = sexual_at_right_stage.index(ind)
+							population[ind]['embryo_gt'] = gt
+							del sexual_at_right_stage[index]
+						else:
+#							print "%s only inseminates but cannot be inseminated at the moment" %ind
+							pass
+					else:
+#						print "pity!"
+						pass
+				else:
+#					print "no luck!"
+					pass
+	
+	### THIS IS THE ORIGINAL PART
 	for ind in individuals:
 		age = i-population[ind]['born']
 		if population[ind]['births'] == 0:
@@ -326,18 +394,24 @@ for i in range(1,ticks):
 					if population[daughter]['genome'][j] == 'ab':
 						av_heterozygosity[j] += 1
 #				print ind,population[ind]
-
-				
 		
 		else:
 			if (random.randint(0,100) < sec_and_sub_prob[i-population[ind]['gave_birth']]):
 				daughter = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
 #				print "# DAY: %.1f - %s (age: %s) gives birth (%s) to %s" %((float(i)/24), ind,age,population[ind]['births']+1, daughter)
+				if population[ind]['births'] == 1: #second born daugher is always parthenogenetic according to Cable and Harris 2002
+					population[daughter] = {'mother':ind, 'births': int(0), 'sex':'female', 'born':i, 'gave_birth':0, 'genome':reproduce(mode=mode, parentA=population[ind]['genome'], hom_prob=probs)}
+				else:
+					#third and subsequent can be sexual, or parthenogenetic - we need to choose somehow - leave as purely parthenogenetic for now
+					if 'embryo_gt' in population[ind]: #this ind has been inseminated before
+						population[daughter] = {'mother':ind, 'births': int(0), 'sex':'female', 'born':i, 'gave_birth':0, 'genome':population[ind]['embryo_gt']}
+						del population[ind]['embryo_gt']
+					else:
+						population[daughter] = {'mother':ind, 'births': int(0), 'sex':'female', 'born':i, 'gave_birth':0, 'genome':reproduce(mode=mode, parentA=population[ind]['genome'], hom_prob=probs)}
+
 	                        population[ind]['births'] += 1
 				population[ind]['gave_birth'] = i
 				born+=1
-#				population[daughter] = {'mother':ind, 'births': int(0), 'sex':'female', 'born':i, 'gave_birth':0, 'genome':reproduce(mode='sexual', parentA=population[ind]['genome'], hom_prob=[], parentB=population[ind]['genome'])}#arf_probs)}
-				population[daughter] = {'mother':ind, 'births': int(0), 'sex':'female', 'born':i, 'gave_birth':0, 'genome':reproduce(mode=mode, parentA=population[ind]['genome'], hom_prob=probs)}
 #				if population[ind]['sex'] == 'female':
 				population[ind]['sex'] = 'male'
 #				elif population[ind]['sex'] == 'male':
@@ -353,6 +427,9 @@ for i in range(1,ticks):
 					if population[daughter]['genome'][j] == 'ab':
 						av_heterozygosity[j] += 1
 #				print ind,population[ind]
+
+
+
 
 
 		if random.randint(0,100) < death_prob[age]:
