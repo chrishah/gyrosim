@@ -21,3 +21,26 @@ parallel --tagstring {2} --jobs 6 -N2 ./gyrosim.py {1} {2} ::: $instructions > o
 ## the second parallel job will go './gyrosim.py 1920 arf sexual' and so on
 parallel --tagstring {2} --jobs 6 -N3 ./gyrosim.py {1} {2} {3} ::: $instructions_sexual > outputs/simulations.sexual-True.log
 
+
+
+######################
+
+CHeck out how the simulated populations exlore haplotype space:
+
+Create a txt file containing all possible genotypes and haplotype combinations for a total of 10 loci.
+```bash
+./create_all_possible_hts.py 10
+```
+
+Find the reproductive mode that covers the complete haplotype space the fastest.
+e.g.:
+```bash
+./gyrosim.py 1920 arf sexual 10 #run for 1920 hours, second and subsequent births are per default arf; third birth can be sexual; genome has 10 variable loci; This will, at the end of the run automatically read in a file 'hts.txt' which contains the possible haplotypes, remove the ones that have been covered in the current run and write the remaining back to the file.
+```
+
+To simulate 10 fish and see how many haplotypes have not yet been covered. The number of parasites per fish needs to be specified in the script.
+```bash
+./create_all_possible_hts.py 10
+#this would run 10 consecutive simulations (10 fish) and for each subtract the haplotypes that have been explored from all possible at the end of each simulation
+for i in {01..10}; do echo -e "$i"; ./gyrosim.py 1920 atf sexual 10; done
+```

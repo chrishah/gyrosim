@@ -5,7 +5,8 @@ from datetime import datetime
 import random
 from collections import defaultdict
 import numpy as np
-
+import os
+import math
 
 ### INPUTS
 #seed = 12345
@@ -13,17 +14,20 @@ import numpy as np
 
 sexual = False
 start_pressure = 2 # each tick each individual is challenged with a probability of 0.05. if challenged the individul dies with probability of 0.05
+check_hts = 'hts.txt'
+remaining_hts = 'hts.remaining.txt'
+initial_population_size = 0 #0 means start from a single individual
 
 #For density dependent regime
-density_dependence_interval = 10 # in hours at which population size will be checked and compared against the specified
-density = 50 # desired population size
+density_dependence_interval = 5 # in hours at which population size will be checked and compared against the specified
+density = 50 # desired population size to regulate to
 
 #For time dependent regime
 time_dependence_interval = 0 #96
 incremental_pressure_increase = 0 #1
 
-verbose = False
-genome_size = 1000
+verbose = True
+genome_size = 10
 
 write_out = True
 report_interval = 1
@@ -41,17 +45,6 @@ if len(sys.argv) == 5:
 	genome_size = int(sys.argv[4])
 
 
-output = []
-outfreqs = []
-
-outstring = "[ %s - PARAMETER SETTINGS ]\tgenome size: %s\tparthenogenesis mode: %s\tsexual: %s\tstart pressure: %s\tregulate density: %s\tdensity check inteval: %s\ttime dependence: %s\tpressure increment per time: %s" %(fish, genome_size, mode, sexual, start_pressure, density, density_dependence_interval, time_dependence_interval, incremental_pressure_increase)
-
-print outstring
-if write_out:
-	output.append(outstring+'\n')
-	outfreqs.append(outstring+'\n')
-#######
-pressure = start_pressure
 
 
 #'sexual', 'apomixis', 'agd', 'atf', 'acf', 'arf'
@@ -222,6 +215,12 @@ def add_minimum(minimum, dictionary):
 
 	return outdict
 
+#pressure = start_pressure
+if initial_population_size and density: #if the simulation does not start with a single individual then I'll set the pressure to a value that is dictated by the starting population (p = ln(starting)/e*10). for 50 this gives roughly 14 for 1000 this would give 25
+	pressure = int(round(math.log(initial_population_size)/math.exp(1)*10,0))
+else:
+	pressure = start_pressure
+
 first_birth_prob=make_prob(maxi=50)
 sec_and_sub_prob=make_prob(maxi=100)
 initial_death_prob=make_prob(maxi=340, sigma=10)
@@ -246,24 +245,45 @@ probs = assign_homozygous_transition_prob(genotypes=genome, model=mode)
 #acf_probs = assign_homozygous_transition_prob(genotypes=genome, model='acf') 
 #atf_probs = assign_homozygous_transition_prob(genotypes=genome, model='atf') 
 #arf_probs = assign_homozygous_transition_prob(genotypes=genome, model='arf') 
+population = {}
 
-founder = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
-daughter = ''
+if initial_population_size:
+	for i in range(initial_population_size): #if the simulation is to start with more than one individual I give them a random age between -0 and -50, so that not all individuals are exactly the same age which results in massive surges of births +- two days of start of simulation which is difficult to regulate and also it's more realistic
+		population["".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))] = {'mother':'origin', 'births': int(0), 'sex': 'female', 'born':(random.randint(0,50)*-1), 'gave_birth':0, 'genome':genome}
+else:
+	founder = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
+	population[founder] = {'mother':'origin', 'births': int(0), 'sex': 'female', 'born':0, 'gave_birth':0, 'genome':genome}
+#daughter = ''
 
-population = {founder: {'mother':'origin', 'births': int(0), 'sex': 'female', 'born':0, 'gave_birth':0, 'genome':genome}}
 individuals = []
 sex_distribution = defaultdict(int)
 alleles = []
 av_heterozygosity = []
 all_homo = False
 final_out = ''
-for i in range(len(population[founder]['genome'])):
+for i in range(len(genome)):#population[founder]['genome'])):
 	alleles.append('')
 	av_heterozygosity.append('')	
 
 birth_counts = {1:0, 2:0, 3:0, 4:0}
 
 prev_sizes = []
+
+output = []
+outfreqs = []
+gts = []
+hts = []
+
+outstring = "[ %s - PARAMETER SETTINGS ]\tgenome size: %s\tstart population: %s\tparthenogenesis mode: %s\tsexual: %s\tstart pressure: %s\tregulate density: %s\tdensity check inteval: %s\ttime dependence: %s\tpressure increment per time: %s" %(fish, genome_size, len(population), mode, sexual, start_pressure, density, density_dependence_interval, time_dependence_interval, incremental_pressure_increase)
+
+print outstring
+if write_out:
+	output.append(outstring+'\n')
+	outfreqs.append(outstring+'\n')
+
+
+#######
+
 
 for i in range(1,ticks):
 
@@ -273,24 +293,27 @@ for i in range(1,ticks):
 		if density > 0:
 			std = np.std(prev_sizes,keepdims=True)[0]
 			mean = np.mean(prev_sizes)
-#			print prev_sizes,np.mean(prev_sizes),std,int(std)
+			diff = prev_sizes[0] - prev_sizes[-1]
+			print len(population),prev_sizes,mean,int(round(std,0)),diff
 			prev_sizes = []
 			if len(population) > mean:
+				print "the population is growing"
 				if len(population) >= density*0.9:
 					if len(population) < density:
-#						print "slight adjust - increase (above) pressure by %i" %int(round(std,0)/2)
+						print "slight adjust - increase (above) pressure by %i" %int(round(std,0)/2)
 						pressure += int(round(std,0)/2)
 					elif len(population) >= density:
-#						print "adjust - increase (above) pressure by %i" %int(round(std,0))
+						print "adjust - increase (above) pressure by %i" %int(round(std,0))
 						pressure += int(round(std,0))
 					ok = False
 			elif len(population) < mean:
+				print "the population is declining"
 				if len(population) <= density*1.1:
 					if len(population) > density:
-#						print "slight adjust - decrease (below) pressure by %i" %int(round(std,0)/2)
+						print "slight adjust - decrease (below) pressure by %i" %int(round(std,0)/2)
 						pressure -= int(round(std,0)/2)
 					elif len(population) <= density:
-#						print "adjust - decrease (below) pressure by %i" %int(round(std,0))
+						print "adjust - decrease (below) pressure by %i" %int(round(std,0))
 						pressure -= int(round(std,0))
 					ok = False
 	prev_sizes.append(len(population))
@@ -470,6 +493,8 @@ for i in range(1,ticks):
 			if population[ind]['genome'][j] == 'ab':
 				av_heterozygosity[j] += 1
 
+
+
 	if len(population) == 0:
 		outstring = "[ %s - POP. EXTINCTION ]\tdays: %.1f" %(fish, float(i)/24)
 		print outstring
@@ -484,7 +509,6 @@ for i in range(1,ticks):
 	else:
 		frequencies = []
 		percent_homozygous = float(0)
-		
 		for j in range(len(genome)):
 			counts = defaultdict(int)
 			counts['a'] = 0
@@ -504,6 +528,28 @@ for i in range(1,ticks):
 				percent_homozygous += 1 
 
 			av_heterozygosity[j] = av_heterozygosity[j]/len(population)*100
+
+		# extract genotypes
+		for ind in population:
+			gts.append("".join(population[ind]['genome']))
+	
+		gts = list(set(gts))
+
+		#extract haplotypes
+		for gt in gts:
+			first=''
+	        	second=''
+	        	for z in xrange(0, len(gt), 2):
+	                	first += gt[z]
+
+	        	for z in xrange(1, len(gt), 2):
+	                	second += gt[z]
+
+	        	hts.extend([first,second])
+
+		hts = list(set(hts))
+
+#		print "genotypes: %s\thaplotypes: %s\tratio (ht/gt): %.2f" %(len(gts),len(hts), float(len(hts))/len(gts))
 
 		percent_homozygous = percent_homozygous/len(genome)*100		
 
@@ -536,6 +582,8 @@ for i in range(1,ticks):
 					all_homo = True
 			
 
+		
+
 if not verbose:
 	outstring = ''
 	if final_out:
@@ -543,7 +591,7 @@ if not verbose:
 	outstring += "[ %s - SIMULATION DONE ]\tdays: %.1f\thours: %s \tpopulation size: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f h\tpressure: %s\t" %(fish, (float(i)/24), i, len(population), male_perc, fema_perc, np.mean(ages), pressure) 
 		
 #	print "percent homozygous: %.2f\t%s" %(percent_homozygous, frequencies)
-	outstring += "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+	outstring += "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tgenotypes: %s\thaplotypes: %s\tht/gt ratio: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), len(gts),len(hts), float(len(hts))/len(gts), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
 	print outstring
 	if write_out:
         	output.append(outstring+'\n')
@@ -558,9 +606,19 @@ if write_out:
 	for l in outfreqs:
 		OUTFREQ.write(l)
 
+if check_hts:
+	ht_count = 0
+	print "checking haplotypes .. ",
+	outfh = open('tmp.txt','w')
+	for l in open(check_hts, 'r'):
+		if not l.strip() in hts:
+			outfh.write(l)
+			ht_count += 1
+	os.rename('tmp.txt',check_hts)	
+	print "%s left\n" %ht_count
 
-
-
+################################
+################################
 import base64
 def encode(key, clear):
     enc = []
