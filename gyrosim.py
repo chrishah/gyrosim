@@ -16,7 +16,7 @@ sexual = False
 start_pressure = 2 # each tick each individual is challenged with a probability of 0.05. if challenged the individul dies with probability of 0.05
 check_hts = 'hts.txt'
 remaining_hts = 'hts.remaining.txt'
-initial_population_size = 0 #0 means start from a single individual
+initial_population_size = 50 #0 means start from a single individual
 
 #For density dependent regime
 density_dependence_interval = 5 # in hours at which population size will be checked and compared against the specified
@@ -271,6 +271,7 @@ prev_sizes = []
 
 output = []
 outfreqs = []
+outgts = []
 gts = []
 hts = []
 
@@ -280,12 +281,13 @@ print outstring
 if write_out:
 	output.append(outstring+'\n')
 	outfreqs.append(outstring+'\n')
-
+	outgts.append(outstring+'\n')
 
 #######
 
 
 for i in range(1,ticks):
+	per_tick_gts = defaultdict(int)
 
 	#at regular intervals
 	ok = True
@@ -294,26 +296,26 @@ for i in range(1,ticks):
 			std = np.std(prev_sizes,keepdims=True)[0]
 			mean = np.mean(prev_sizes)
 			diff = prev_sizes[0] - prev_sizes[-1]
-			print len(population),prev_sizes,mean,int(round(std,0)),diff
+#			print len(population),prev_sizes,mean,int(round(std,0)),diff
 			prev_sizes = []
 			if len(population) > mean:
-				print "the population is growing"
+#				print "the population is growing"
 				if len(population) >= density*0.9:
 					if len(population) < density:
-						print "slight adjust - increase (above) pressure by %i" %int(round(std,0)/2)
+#						print "slight adjust - increase (above) pressure by %i" %int(round(std,0)/2)
 						pressure += int(round(std,0)/2)
 					elif len(population) >= density:
-						print "adjust - increase (above) pressure by %i" %int(round(std,0))
+#						print "adjust - increase (above) pressure by %i" %int(round(std,0))
 						pressure += int(round(std,0))
 					ok = False
 			elif len(population) < mean:
-				print "the population is declining"
+#				print "the population is declining"
 				if len(population) <= density*1.1:
 					if len(population) > density:
-						print "slight adjust - decrease (below) pressure by %i" %int(round(std,0)/2)
+#						print "slight adjust - decrease (below) pressure by %i" %int(round(std,0)/2)
 						pressure -= int(round(std,0)/2)
 					elif len(population) <= density:
-						print "adjust - decrease (below) pressure by %i" %int(round(std,0))
+#						print "adjust - decrease (below) pressure by %i" %int(round(std,0))
 						pressure -= int(round(std,0))
 					ok = False
 	prev_sizes.append(len(population))
@@ -344,6 +346,7 @@ for i in range(1,ticks):
 	for j in range(len(genome)):
 		alleles[j] = ''
 		av_heterozygosity[j] = float(0)
+
 
 	ages = []
 	born=0
@@ -393,17 +396,21 @@ for i in range(1,ticks):
 						parentB_index = random.randrange(0,len(sexual_at_right_stage))
 						parentB = sexual_at_right_stage[parentB_index]
 #						print "It's a match with %s!" %parentB
+
 						gt = reproduce(mode='sexual', parentA=population[ind]['genome'], parentB=population[parentB]['genome'])
 						population[parentB]['embryo_gt'] = gt
 						del sexual_at_right_stage[parentB_index]
 	
 						if ind in sexual_at_right_stage:
 #							print "reciprocal insemination"
+						
+
 							index = sexual_at_right_stage.index(ind)
 							population[ind]['embryo_gt'] = gt
 							del sexual_at_right_stage[index]
 						else:
 #							print "%s only inseminates but cannot be inseminated at the moment" %ind
+
 							pass
 					else:
 #						print "pity!"
@@ -430,7 +437,7 @@ for i in range(1,ticks):
 #				print "Add new genome - first born"
 				for j in range(len(genome)):
 					alleles[j] += population[daughter]['genome'][j]
-					if population[daughter]['genome'][j] == 'ab':
+					if population[daughter]['genome'][j] == 'ab' or population[daughter]['genome'][j] == 'ba':
 						av_heterozygosity[j] += 1
 #				print ind,population[ind]
 		
@@ -438,6 +445,8 @@ for i in range(1,ticks):
 			if (random.randint(0,100) < sec_and_sub_prob[i-population[ind]['gave_birth']]):
 				daughter = "".join(datetime.utcnow().strftime('%Y%m%d%H%M%S.%f').split('.'))
 #				print "# DAY: %.1f - %s (age: %s) gives birth (%s) to %s" %((float(i)/24), ind,age,population[ind]['births']+1, daughter)
+
+
 				if population[ind]['births'] == 1: #second born daugher is always parthenogenetic according to Cable and Harris 2002
 					population[daughter] = {'mother':ind, 'births': int(0), 'sex':'female', 'born':i, 'gave_birth':0, 'genome':reproduce(mode=mode, parentA=population[ind]['genome'], hom_prob=probs)}
 				else:
@@ -447,6 +456,7 @@ for i in range(1,ticks):
 						del population[ind]['embryo_gt']
 					else:
 						population[daughter] = {'mother':ind, 'births': int(0), 'sex':'female', 'born':i, 'gave_birth':0, 'genome':reproduce(mode=mode, parentA=population[ind]['genome'], hom_prob=probs)}
+
 
 	                        population[ind]['births'] += 1
 				population[ind]['gave_birth'] = i
@@ -463,7 +473,7 @@ for i in range(1,ticks):
 #				print "Add new genome - second born"
 				for j in range(len(genome)):
 					alleles[j] += population[daughter]['genome'][j]
-					if population[daughter]['genome'][j] == 'ab':
+					if population[daughter]['genome'][j] == 'ab' or population[daughter]['genome'][j] == 'ba':
 						av_heterozygosity[j] += 1
 #				print ind,population[ind]
 
@@ -490,7 +500,7 @@ for i in range(1,ticks):
 #		print "Add genome"
 		for j in range(len(genome)):
 			alleles[j] += population[ind]['genome'][j]
-			if population[ind]['genome'][j] == 'ab':
+			if population[ind]['genome'][j] == 'ab' or population[ind]['genome'][j] == 'ba':
 				av_heterozygosity[j] += 1
 
 
@@ -528,11 +538,13 @@ for i in range(1,ticks):
 				percent_homozygous += 1 
 
 			av_heterozygosity[j] = av_heterozygosity[j]/len(population)*100
+		
 
 		# extract genotypes
 		for ind in population:
 			gts.append("".join(population[ind]['genome']))
-	
+			per_tick_gts["".join(population[ind]['genome'])] += 1
+
 		gts = list(set(gts))
 
 		#extract haplotypes
@@ -551,7 +563,7 @@ for i in range(1,ticks):
 
 #		print "genotypes: %s\thaplotypes: %s\tratio (ht/gt): %.2f" %(len(gts),len(hts), float(len(hts))/len(gts))
 
-		percent_homozygous = percent_homozygous/len(genome)*100		
+		percent_homozygous = float(percent_homozygous)/len(genome)*100		
 
 #		print "###POPULATION SIZE AFTER %.1f DAYS ( %s hours): %s\t\tborn: %s\t\tdied: %s\t\tmales: %.2f %% \t\tfemales: %.2f %%\t\tavg.age: %.0f" %((float(i)/24), i, len(population), born, died, float(sex_distribution['male'])/len(population)*100, float(sex_distribution['female'])/len(population)*100, np.mean(ages)) 
 
@@ -564,12 +576,14 @@ for i in range(1,ticks):
 
 		if i % report_interval == 0:
 			outstring = "[ %s - VERBOSE OUTPUT ]\tdays: %.1f\thours: %s\tpopulation size: %s\tborn: %s\tdied: %s\tmales: %.2f %%\tfemales: %.2f %%\tavg.age: %.0f\tpressure: %s\t" %(fish, (float(i)/24), i, len(population), born, died, male_perc, fema_perc, np.mean(ages), pressure) 
-			outstring += "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+			outstring += "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tgenotypes: %s\thaplotypes: %s\tht/gt ratio: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), len(gts),len(hts), float(len(hts))/len(gts), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
+#			outstring += "N loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\tfirst births: %s\tsecond births: %s\tthird births: %s\tfourth birth: %s" %(len(genome),percent_homozygous, np.mean(av_heterozygosity), birth_counts[1], birth_counts[2], birth_counts[3], birth_counts[4])
 			if verbose:
 				print outstring
 			if write_out:
 	        		output.append(outstring+'\n')
 				outfreqs.append("[ %s ]\tdays: %.1f\thours: %s\tpopulation size: %s\tN loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\t%s\n" %(fish, (float(i)/24), i, len(population),len(genome),percent_homozygous, np.mean(av_heterozygosity),frequencies))
+				outgts.append("[ %s ]\tdays: %.1f\thours: %s\tpopulation size: %s\tN loci: %s\tpercent fixed: %.2f\taverage heterozygosity: %.2f\t%s\n" %(fish, (float(i)/24), i, len(population),len(genome),percent_homozygous, np.mean(av_heterozygosity),per_tick_gts))
 #			print "percent homozygous: %.2f\t%s" %(percent_homozygous, frequencies)
 #			print "percent fixed: %.2f" %(percent_homozygous)
 #			print av_heterozygosity
@@ -605,6 +619,10 @@ if write_out:
 	OUTFREQ = open(out_location+fish+'.allele_freqs.'+mode+'.sexual-'+str(sexual)+'.tsv','w')
 	for l in outfreqs:
 		OUTFREQ.write(l)
+
+	OUTGTS = open(out_location+fish+'.gts.'+mode+'.sexual-'+str(sexual)+'.tsv','w')
+	for l in outgts:
+		OUTGTS.write(l)
 
 if check_hts:
 	ht_count = 0
